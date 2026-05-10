@@ -25,6 +25,13 @@ WORKDIR /app/web
 # Accept build argument for backend port
 ARG BACKEND_PORT=8001
 
+# Auth enabled flag — inlined into the Next.js bundle at build time so that
+# components like LogoutButton and the auth middleware can act on it without
+# a runtime API call.  Pass --build-arg AUTH_ENABLED=true when building for
+# a deployment with authentication turned on.
+ARG AUTH_ENABLED=false
+ENV NEXT_PUBLIC_AUTH_ENABLED=${AUTH_ENABLED}
+
 # Application version (e.g. "v1.2.3"). Passed by CI from the release tag
 # and inlined into the Next.js bundle via NEXT_PUBLIC_APP_VERSION so the
 # sidebar version badge can compare it with the latest GitHub release.

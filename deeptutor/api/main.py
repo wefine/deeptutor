@@ -169,6 +169,60 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
+# Public version endpoint — consumed by the sidebar VersionBadge component.
+# Returns the running build tag (from APP_VERSION env) so the frontend can
+# display the current version without a GitHub API call.
+@app.get("/api/version")
+async def get_version():
+    import os as _os
+    import re as _re
+
+    raw = _os.getenv("APP_VERSION", "").strip()
+
+    # Minimal semver parser matching the frontend parseBuild() logic
+    _semver = r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?)"
+    parsed = None
+    if raw:
+        m = _re.match(rf"^v?{_semver}$", raw)
+        if m:
+            tag = f"v{m.group(1)}"
+            parsed = {
+                "tag": tag,
+                "isDev": False,
+                "isDirty": False,
+                "display": tag,
+                "raw": raw,
+                "commitsAhead": None,
+                "commit": None,
+            }
+        else:
+            parsed = {
+                "tag": None,
+                "isDev": True,
+                "isDirty": False,
+                "display": "dev",
+                "raw": raw,
+                "commitsAhead": None,
+                "commit": None,
+            }
+
+    return {
+        "current": (
+            {
+                **parsed,
+                "source": "env",
+                "detectedAt": "",
+            }
+            if parsed
+            else None
+        ),
+        "tag": None,
+        "name": None,
+        "url": None,
+        "publishedAt": None,
+        "source": "fallback",
+    }
+
 # Log only non-200 requests (uvicorn access_log is disabled in run_server.py)
 _access_logger = logging.getLogger("uvicorn.access")
 

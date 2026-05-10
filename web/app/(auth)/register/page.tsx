@@ -82,8 +82,8 @@ export default function RegisterPage() {
             </label>
             <input
               id="username"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
