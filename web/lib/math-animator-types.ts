@@ -1,5 +1,23 @@
 export type MathAnimatorOutputMode = "video" | "image";
 
+export interface MathAnimatorFormConfig {
+  output_mode: MathAnimatorOutputMode;
+  quality: "low" | "medium" | "high";
+  style_hint: string;
+}
+
+export function summarizeMathAnimatorConfig(
+  config: MathAnimatorFormConfig,
+  t: (key: string) => string,
+): string {
+  const parts: string[] = [
+    `${t("Output")}: ${config.output_mode}`,
+    `${t("Quality")}: ${config.quality}`,
+  ];
+  if (config.style_hint) parts.push(config.style_hint);
+  return parts.join(" · ");
+}
+
 export interface MathAnimatorArtifact {
   type: "video" | "image";
   url: string;
