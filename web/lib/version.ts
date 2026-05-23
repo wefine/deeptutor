@@ -14,3 +14,41 @@ export function normalizeVersionTag(
   );
   return match ? `v${match[1]}` : null;
 }
+
+export type VersionSource = "git" | "env" | "unknown";
+
+export interface ParsedBuild {
+  tag: string;
+  display: string;
+  isDev: boolean;
+  isDirty: boolean;
+  commitsAhead: number;
+  commit: string;
+}
+
+export function parseBuild(raw: string | null | undefined): ParsedBuild | null {
+  if (!raw) return null;
+  const tag = normalizeVersionTag(raw);
+  if (!tag) return null;
+  const isDev = raw.includes("-dev") || raw.includes("-beta") || raw.includes(".dev");
+  return {
+    tag,
+    display: raw,
+    isDev,
+    isDirty: raw.includes("-dev") || raw.includes("dirty"),
+    commitsAhead: 0,
+    commit: "",
+  };
+}
+
+export function unknownBuild(raw: string | null | undefined): ParsedBuild {
+  const fallback = raw ?? "unknown";
+  return {
+    tag: fallback,
+    display: fallback,
+    isDev: true,
+    isDirty: false,
+    commitsAhead: 0,
+    commit: "",
+  };
+}
