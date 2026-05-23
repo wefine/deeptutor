@@ -1,22 +1,14 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Lora } from "next/font/google";
 import "./globals.css";
 import ThemeScript from "@/components/ThemeScript";
 import ToastViewport from "@/components/common/ToastViewport";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
-const fontSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-sans",
-});
-
-const fontSerif = Lora({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-serif",
-});
+// Use CSS system font stacks instead of Google Fonts
+// This avoids build-time network dependency on Google Fonts CDN
+const fontSansClass = "";  // --font-sans is set via globals.css
+const fontSerifClass = ""; // --font-serif is set via globals.css
 
 export const metadata: Metadata = {
   title: "DeepTutor",
@@ -32,24 +24,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      data-scroll-behavior="smooth"
-      className={`${fontSans.variable} ${fontSerif.variable}`}
-    >
-      <head>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${fontSansClass} ${fontSerifClass}`}>
         <ThemeScript />
-      </head>
-      <body className="font-sans bg-[var(--background)] text-[var(--foreground)]">
         <AppShellProvider>
           <I18nClientBridge>{children}</I18nClientBridge>
-          <ToastViewport />
         </AppShellProvider>
+        <ToastViewport />
       </body>
     </html>
   );
