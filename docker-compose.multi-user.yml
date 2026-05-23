@@ -13,7 +13,7 @@ name: deeptutor-prod
 services:
 
   deeptutor:
-    image: 192.168.1.36:5000/deeptutor/app:1.3.8-arm64
+    image: 192.168.1.36:5000/deeptutor/app:1.4.0-arm64
     container_name: deeptutor
     restart: always
     env_file:

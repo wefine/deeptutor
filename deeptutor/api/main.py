@@ -1,28 +1,21 @@
 from contextlib import asynccontextmanager
 import logging
-import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from deeptutor.logging import configure_logging
-from deeptutor.services.config import get_env_store
+from deeptutor.services.config import (
+    ensure_runtime_settings_files,
+    export_runtime_settings_to_env,
+    load_auth_settings,
+    load_system_settings,
+)
 from deeptutor.services.path_service import get_path_service
 
-_env_values = get_env_store().load()
-for _key in (
-    "AUTH_ENABLED",
-    "AUTH_SECRET",
-    "AUTH_TOKEN_EXPIRE_HOURS",
-    "AUTH_USERNAME",
-    "AUTH_PASSWORD_HASH",
-    "POCKETBASE_URL",
-    "POCKETBASE_ADMIN_EMAIL",
-    "POCKETBASE_ADMIN_PASSWORD",
-):
-    if _key in _env_values:
-        os.environ[_key] = _env_values[_key]
+ensure_runtime_settings_files()
+export_runtime_settings_to_env(overwrite=True)
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -44,7 +37,6 @@ CONFIG_DRIFT_ERROR_TEMPLATE = (
     "registered in the runtime tool registry. Register the missing tools or "
     "remove the stale tool names from the capability manifests."
 )
-TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
 class SafeOutputStaticFiles(StaticFiles):
@@ -88,10 +80,6 @@ def validate_tool_consistency():
         raise
 
 
-def _env_truthy(value: str | None) -> bool:
-    return str(value or "").strip().lower() in TRUTHY_ENV_VALUES
-
-
 def _split_origins(value: str | None) -> list[str]:
     if not value:
         return []
@@ -108,9 +96,11 @@ def _split_origins(value: str | None) -> list[str]:
 
 def _build_cors_settings() -> dict[str, object]:
     """Build CORS settings for both localhost and remote Docker deployments."""
-    frontend_port = os.getenv("FRONTEND_PORT", "3782").strip() or "3782"
-    extra_origins = _split_origins(os.getenv("CORS_ORIGIN")) + _split_origins(
-        os.getenv("CORS_ORIGINS")
+    system_settings = load_system_settings()
+    auth_settings = load_auth_settings()
+    frontend_port = str(system_settings["frontend_port"])
+    extra_origins = _split_origins(system_settings["cors_origin"]) + _split_origins(
+        ",".join(system_settings["cors_origins"])
     )
     origins = [
         f"http://localhost:{frontend_port}",
@@ -126,7 +116,7 @@ def _build_cors_settings() -> dict[str, object]:
     # pre-v1.3.8 behavior and allow remote Docker/LAN origins out of the box.
     # When auth is enabled, require explicit CORS_ORIGIN(S) for credentialed
     # cross-origin requests.
-    allow_origin_regex = None if _env_truthy(os.getenv("AUTH_ENABLED")) else r"https?://.*"
+    allow_origin_regex = None if auth_settings["enabled"] else r"https?://.*"
     return {"allow_origins": origins, "allow_origin_regex": allow_origin_regex}
 
 
@@ -176,6 +166,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"PocketBase startup check failed: {e}")
 
+    # Migrate any v1 memory files (PROFILE.md / SUMMARY.md) into a
+    # backup folder so the v2 three-layer subsystem starts clean.
+    try:
+        from deeptutor.services.memory import migrate_v1_if_needed
+
+        backup = migrate_v1_if_needed()
+        if backup is not None:
+            logger.info("v1 memory archived to %s", backup)
+    except Exception as e:
+        logger.warning(f"v1 memory migration failed: {e}")
+
     yield
 
     # Execute on shutdown
@@ -212,60 +213,6 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
-# Public version endpoint — consumed by the sidebar VersionBadge component.
-# Returns the running build tag (from APP_VERSION env) so the frontend can
-# display the current version without a GitHub API call.
-@app.get("/api/version")
-async def get_version():
-    import os as _os
-    import re as _re
-
-    raw = _os.getenv("APP_VERSION", "").strip()
-
-    # Minimal semver parser matching the frontend parseBuild() logic
-    _semver = r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?)"
-    parsed = None
-    if raw:
-        m = _re.match(rf"^v?{_semver}$", raw)
-        if m:
-            tag = f"v{m.group(1)}"
-            parsed = {
-                "tag": tag,
-                "isDev": False,
-                "isDirty": False,
-                "display": tag,
-                "raw": raw,
-                "commitsAhead": None,
-                "commit": None,
-            }
-        else:
-            parsed = {
-                "tag": None,
-                "isDev": True,
-                "isDirty": False,
-                "display": "dev",
-                "raw": raw,
-                "commitsAhead": None,
-                "commit": None,
-            }
-
-    return {
-        "current": (
-            {
-                **parsed,
-                "source": "env",
-                "detectedAt": "",
-            }
-            if parsed
-            else None
-        ),
-        "tag": None,
-        "name": None,
-        "url": None,
-        "publishedAt": None,
-        "source": "fallback",
-    }
-
 # Log only non-200 requests (uvicorn access_log is disabled in run_server.py)
 _access_logger = logging.getLogger("uvicorn.access")
 
@@ -283,6 +230,32 @@ async def selective_access_log(request, call_next):
             response.status_code,
         )
     return response
+
+
+# --- Custom: /api/version endpoint for private deployment ---
+import os
+import re as _re
+
+@app.get("/api/version")
+async def get_version():
+    raw = os.environ.get("APP_VERSION", "v0.0.0-dev")
+    m = _re.match(r"v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?", raw)
+    if m:
+        tag = f"v{m.group(1)}.{m.group(2)}.{m.group(3)}"
+        pre = m.group(4) or ""
+        display = f"{tag}-{pre}" if pre else tag
+    else:
+        tag, display = raw, raw
+    return {
+        "current": {
+            "tag": tag,
+            "display": display,
+            "isDev": "-dev" in raw or "-beta" in raw,
+            "isDirty": False,
+            "commitsAhead": 0,
+            "commit": "",
+        }
+    }
 
 
 _cors_settings = _build_cors_settings()
@@ -323,6 +296,7 @@ from deeptutor.api.routers import (
     attachments,
     auth,
     book,
+    capabilities_settings,
     chat,
     co_writer,
     dashboard,
@@ -332,14 +306,17 @@ from deeptutor.api.routers import (
     plugins_api,
     question,
     question_notebook,
+    quiz_judge,
     sessions,
     settings,
     skills,
-    solve,
     system,
     tutorbot,
     unified_ws,
     vision_solver,
+)
+from deeptutor.api.routers import (
+    tools as tools_router,
 )
 from deeptutor.multi_user.router import router as multi_user_router  # noqa: E402
 
@@ -359,7 +336,6 @@ app.include_router(
     dependencies=_auth,
 )
 
-app.include_router(solve.router, prefix="/api/v1", tags=["solve"], dependencies=_auth)
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"], dependencies=_auth)
 app.include_router(
     question.router, prefix="/api/v1/question", tags=["question"], dependencies=_auth
@@ -379,6 +355,12 @@ app.include_router(
 app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
+    capabilities_settings.router,
+    prefix="/api/v1/capabilities",
+    tags=["capabilities"],
+    dependencies=_auth,
+)
+app.include_router(
     sessions.router, prefix="/api/v1/sessions", tags=["sessions"], dependencies=_auth
 )
 app.include_router(
@@ -391,6 +373,7 @@ app.include_router(
     settings.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth
 )
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"], dependencies=_auth)
+app.include_router(tools_router.router, prefix="/api/v1/tools", tags=["tools"], dependencies=_auth)
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"], dependencies=_auth)
 app.include_router(
     plugins_api.router, prefix="/api/v1/plugins", tags=["plugins"], dependencies=_auth
@@ -414,6 +397,10 @@ app.include_router(
 # Unified WebSocket endpoint — auth is checked inside the handler (WebSockets
 # cannot use FastAPI dependencies in the standard way)
 app.include_router(unified_ws.router, prefix="/api/v1", tags=["unified-ws"])
+
+# Quiz AI-judge WebSocket — same caveat as unified_ws above; auth is checked
+# inside the handler so the WS upgrade isn't rejected by an HTTP-style dep.
+app.include_router(quiz_judge.router, prefix="/api/v1", tags=["quiz-judge"])
 
 
 @app.get("/")

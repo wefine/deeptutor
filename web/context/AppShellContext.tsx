@@ -49,7 +49,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     return getStoredTheme() ?? getSystemTheme();
   });
-  // Start with "zh" (default language); hydrate from localStorage after mount
+  // Always start with "zh" to match SSR; hydrate from localStorage after mount
   const [language, setLanguageState] = useState<AppLanguage>("zh");
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(
     () => readStoredActiveSessionId(),
@@ -58,6 +58,8 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
 
   useEffect(() => {
+    // Hydrate client-only preferences after SSR-safe first render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLanguageState(readStoredLanguage());
     setSidebarCollapsedState(readStoredSidebarCollapsed());
   }, []);

@@ -7,6 +7,7 @@ import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
   Bot,
+  Brain,
   LayoutGrid,
   Library,
   MessageSquare,
@@ -21,10 +22,10 @@ import { useTranslation } from "react-i18next";
 import SessionList from "@/components/SessionList";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
-import { LogoutButton } from "@/components/auth/LogoutButton";
-import { AdminLink } from "@/components/auth/AdminLink";
 import type { SessionSummary } from "@/lib/session-api";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { LogoutButton } from "@/components/auth/LogoutButton";
+import { AdminLink } from "@/components/auth/AdminLink";
 
 interface NavEntry {
   href: string;
@@ -64,6 +65,12 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Space",
     icon: LayoutGrid,
     tooltipKey: "Space tooltip",
+  },
+  {
+    href: "/memory",
+    label: "Memory",
+    icon: Brain,
+    tooltipKey: "Memory tooltip",
   },
 ];
 
@@ -121,7 +128,7 @@ export function SidebarShell({
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
             <Image
-              src="/logo-ver2.png"
+              src="/logo.png"
               alt="DeepTutor"
               width={22}
               height={22}
@@ -221,17 +228,22 @@ export function SidebarShell({
     <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="group flex items-center gap-2">
+        <Link href="/" className="group flex items-center gap-1.5">
           <Image
-            src="/logo-ver2.png"
+            src="/logo.png"
             alt="DeepTutor"
             width={22}
             height={22}
             className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
           />
-          <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
-            DeepTutor
-          </span>
+          <Image
+            src="/banner.png"
+            alt="DeepTutor"
+            width={897}
+            height={236}
+            priority
+            className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
+          />
         </Link>
         <button
           onClick={() => setCollapsed(true)}
@@ -322,8 +334,8 @@ export function SidebarShell({
         })}
         <div className="mt-0.5 flex items-center gap-0.5">
           <VersionBadge />
-          <AdminLink collapsed />
-          <LogoutButton collapsed />
+          <AdminLink />
+          <LogoutButton />
         </div>
       </div>
     </aside>
